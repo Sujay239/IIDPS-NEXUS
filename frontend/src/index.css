@@ -1,0 +1,48 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg-dark: #0a0e17;
+  --color-panel-bg: rgba(20, 26, 41, 0.6);
+  --color-panel-border: rgba(56, 189, 248, 0.2);
+  --color-neon-blue: #38bdf8;
+  --color-neon-cyan: #22d3ee;
+  --color-neon-red: #ef4444;
+  --color-neon-green: #22c55e;
+  
+  --animate-pulse-glow: pulse-glow 2s infinite;
+  
+  @keyframes pulse-glow {
+    0% { box-shadow: 0 0 0 0 rgba(34, 211, 238, 0.4); }
+    70% { box-shadow: 0 0 0 15px rgba(34, 211, 238, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(34, 211, 238, 0); }
+  }
+}
+
+@layer base {
+  body {
+    @apply m-0 min-w-[320px] min-h-[100vh] text-slate-100;
+    background-color: #0a0e17;
+    background-image: 
+      radial-gradient(circle at 15% 50%, rgba(34, 211, 238, 0.08), transparent 25%),
+      radial-gradient(circle at 85% 30%, rgba(239, 68, 68, 0.05), transparent 25%);
+    color-scheme: dark;
+  }
+}
+
+@layer components {
+  .glass-panel {
+    @apply bg-[rgba(20,26,41,0.6)] backdrop-blur-md border border-[rgba(56,189,248,0.2)] shadow-[0_8px_32px_0_rgba(0,0,0,0.3)] rounded-2xl;
+  }
+}
+
+/* Custom Webkit scrollbar for dark mode */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.1);
+}
+::-webkit-scrollbar-thumb {
+  background: #38bdf8;
+  border-radius: 10px;
+}
