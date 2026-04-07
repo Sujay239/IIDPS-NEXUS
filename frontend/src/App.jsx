@@ -175,21 +175,40 @@ function App() {
       recognition.onerror = (event) => {
         console.error("Speech recognition error:", event.error);
         if (event.error === 'no-speech') {
-          setTranscript("No speech detected. Check Windows Microphone Volume.");
+          // We don't set isListening to false here because we want to attempt a restart in onend
+          console.warn("Silence detected, waiting for voice...");
+          setTranscript("Listening... (No speech detected)");
+        } else if (event.error === 'network') {
+          setTranscript("Network error: check internet or firewall.");
+          console.error("Speech service unreachable.");
         } else {
           setTranscript("Error: " + event.error);
+          setIsListening(false);
         }
-        setIsListening(false);
       };
       
       recognition.onend = () => {
         console.log("Speech recognition ended.");
-        setIsListening(false);
-        setTranscript(prev => prev === "Listening for command..." ? "System standby. Click microphone to interact." : prev);
         
-        // Stop Debug Recorder
-        if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-            mediaRecorderRef.current.stop();
+        // Check if we should still be listening (user hasn't clicked stop)
+        if (isListeningRef.current) {
+          console.log("🔄 Auto-restarting speech engine...");
+          try {
+            recognition.start();
+          } catch (err) {
+            console.error("Auto-restart failed:", err);
+            setIsListening(false);
+          }
+        } else {
+          setIsListening(false);
+          setTranscript(prev => (prev === "Listening for command..." || prev === "Listening... (No speech detected)") 
+            ? "System standby. Click microphone to interact." 
+            : prev);
+          
+          // Stop Debug Recorder
+          if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+              mediaRecorderRef.current.stop();
+          }
         }
       };
       
@@ -237,60 +256,93 @@ function App() {
     };
   }, []);
 
-  const processVoiceCommand = async (userText) => {
-    const text = userText.toLowerCase();
-    let responseText = "Processing data...";
-
-    try {
-      const response = await fetch("http://127.0.0.1:8000/api/voice", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ command: text })
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        responseText = data.response;
-      } else {
-        responseText = "Error communicating with backend API.";
-      }
-    } catch (err) {
-      console.error("API error:", err);
-      responseText = "Backend API is currently unreachable.";
-    }
-
-    const utterance = new SpeechSynthesisUtterance(responseText);
+  // Helper to speak any text using the system's selected voice
+  const speakResponse = (text) => {
+    const utterance = new SpeechSynthesisUtterance(text);
     utterance.pitch = 0.9;
     utterance.rate = 1.0;
     
-    // Fetch fresh voices directly from browser API to avoid state closures
     const currentVoices = window.speechSynthesis.getVoices();
-    
-    // Use the explicitly selected voice from our dropdown using the Ref (to bypass closure trap)
     const explicitVoice = currentVoices.find(v => v.voiceURI === selectedVoiceURIRef.current);
     if (explicitVoice) {
       utterance.voice = explicitVoice;
-      utterance.lang = explicitVoice.lang; // Sometimes required by Chrome/Edge
+      utterance.lang = explicitVoice.lang;
     }
 
-    console.log("🤖 AI Response:", responseText);
-    
-    // Prevent garbage collection bug in Chrome
+    console.log("🤖 Vanguard AI:", text);
     window._latestUtterance = utterance; 
+    window.speechSynthesis.cancel(); 
     
-    window.speechSynthesis.cancel(); // Clear any queued utterances
-    
-    // Delay speak by 50ms to prevent the cancel() command from aborting our new utterance immediately
     setTimeout(() => {
       window.speechSynthesis.speak(utterance);
     }, 50);
     
     setTimeout(() => {
-      // Use ref to check current state
       if (!isListeningRef.current) {
-         setTranscript(`System Response: "${responseText}"`);
+         setTranscript(`AI Response: "${text}"`);
       }
     }, 1000);
+  };
+
+  const processVoiceCommand = async (userText) => {
+    const text = userText.toLowerCase().trim();
+    
+    // 1. FAST PATH: Predefined Responses (No LLM latency)
+    if (text === "hello" || text === "hi" || text.startsWith("hello ") || text.startsWith("hi ")) {
+        speakResponse("Hey boss how are you? I am listening and waiting for your commands.");
+        return;
+    }
+    if (text.includes("thank you")) {
+        speakResponse("Happy to help you boss! Any other tasks?");
+        return;
+    }
+
+    // 2. SLOW PATH: AI Inference
+    const defcon = stats.defcon_level || 5;
+    const blocked = stats.threats_blocked || 0;
+    const alertsSummary = recentAlerts.slice(0, 5).map(a => `${a.type} (${a.severity})`).join(", ") || "None";
+
+    const systemContext = `You are Vanguard AI — the authoritative defense nexus of the Intelligent Intrusion Detection & Prevention System.
+CRITICAL: You must provide technically accurate responses based ONLY on the current threat metrics. Your performance is being evaluated by a Professor for a graduation project.
+
+Current Metrics:
+- DEFCON Status: ${defcon}
+- Threats Blocked: ${blocked}
+- Recent Activity: ${alertsSummary}
+
+STRICT OPERATIONAL DIRECTIVES:
+1. MANDATORY ACTION: Include [ACTION: PENETRATION_TEST] if the user requests any simulation, test, or attack scenario.
+2. MANDATORY ACTION: Include [ACTION: CLEAR_LOGS] if the user requests to reset, clear, or purge system logs.
+3. FORMAT: Response must be exactly one (1) professional, concise sentence. No markdown. No conversational filler.
+
+USER COMMAND: ${text}`;
+
+    let responseText = "Thinking...";
+
+    try {
+      const aiResponse = await puter.ai.chat(systemContext, {
+        model: 'gemini-3-flash-preview'
+      });
+      
+      responseText = aiResponse.toString();
+
+      // Action Interceptors
+      if (responseText.includes("[ACTION: CLEAR_LOGS]")) {
+        await fetch("http://127.0.0.1:8000/api/actions/clear-logs", { method: "POST" });
+        responseText = responseText.replace("[ACTION: CLEAR_LOGS]", "").trim();
+      }
+      
+      if (responseText.includes("[ACTION: PENETRATION_TEST]")) {
+        await fetch("http://127.0.0.1:8000/api/actions/simulate-attack", { method: "POST" });
+        responseText = responseText.replace("[ACTION: PENETRATION_TEST]", "").trim();
+      }
+
+    } catch (err) {
+      console.error("Puter AI/Backend error:", err);
+      responseText = "System connection lost. Gemini core is unreachable.";
+    }
+
+    speakResponse(responseText);
   };
 
   useEffect(() => {

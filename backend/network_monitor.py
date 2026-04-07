@@ -68,10 +68,10 @@ async def traffic_simulator_loop():
             if prediction["is_anomaly"]:
                 traffic_stats["threats_blocked"] += 1
                 new_alert = {
-                    "id": int(datetime.utcnow().timestamp() * 1000),
+                    "id": int(datetime.now().timestamp() * 1000),
                     "type": str(prediction["threat_type"]),
                     "ip": "WAN / Local Socket",
-                    "time": datetime.utcnow().strftime("%H:%M:%S"),
+                    "time": datetime.now().strftime("%H:%M:%S"),
                     "severity": "critical" if prediction["confidence"] > 90 else "high",
                     "confidence": f"{prediction['confidence']}%"
                 }
